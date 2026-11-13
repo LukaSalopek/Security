@@ -9,8 +9,32 @@ app.use(cookieParser());
 const baza = { poruke: [], korisnici: [], ukradeniKolacici: [] };
 const postavke = { xssRanjivost: true, sdeRanjivost: true };
 
+app.post("/xss/poruka", (req, res) => {
+  if (req.body.poruka) baza.poruke.push(req.body.poruka);
+  res.redirect("/");
+});
+
+app.post("/xss/obrisi", (req, res) => {
+  baza.poruke = [];
+  res.redirect("/");
+});
+
 function sekcijaXss() {
-  return `<section><h2>Cross-site scripting (XSS) – pohranjeni</h2><p>(uskoro)</p></section>`;
+  const poruke = baza.poruke
+    .map((p) => `<li>${p}</li>`)
+    .join("");
+  return `<section>
+<h2>Cross-site scripting (XSS) – pohranjeni</h2>
+<p class="upute"><b>Upute:</b> Upiši poruku koja se pohranjuje na poslužitelju i prikazuje svim posjetiteljima. Isprobaj:<br>
+<code>&lt;script&gt;alert(document.cookie)&lt;/script&gt;</code><br>
+<code>&lt;img src=x onerror="alert(document.cookie)"&gt;</code></p>
+<form method="post" action="/xss/poruka">
+Poruka: <input name="poruka" size="60"> <button>Spremi poruku</button>
+</form>
+<form method="post" action="/xss/obrisi"><button>Obriši poruke</button></form>
+<h3>Poruke</h3>
+<ul>${poruke}</ul>
+</section>`;
 }
 
 function sekcijaSde() {
@@ -18,6 +42,8 @@ function sekcijaSde() {
 }
 
 app.get("/", (req, res) => {
+  const sid = req.cookies.sessionId || randomBytes(8).toString("hex");
+  res.cookie("sessionId", sid);
   res.send(`<!DOCTYPE html>
 <html lang="hr">
 <head>
