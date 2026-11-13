@@ -8,6 +8,7 @@ app.use(cookieParser());
 
 const baza = { poruke: [], korisnici: [], ukradeniKolacici: [] };
 const postavke = { xssRanjivost: true, sdeRanjivost: true };
+let porukaPrijave = "";
 
 function kodiraj(tekst) {
   return String(tekst)
@@ -37,6 +38,33 @@ app.get("/napadac", (req, res) => {
 <form method="post" action="/xss/obrisi"><button>Obriši poruke i vrati se</button></form>`);
 });
 
+function spremiKorisnika(ime, lozinka, kartica) {
+  baza.korisnici.push({ nacin: "ranjivo", ime, lozinka, kartica });
+}
+
+app.post("/sde/registracija", (req, res) => {
+  const { ime, lozinka, kartica } = req.body;
+  if (ime && lozinka && kartica) spremiKorisnika(ime, lozinka, kartica);
+  res.redirect("/");
+});
+
+app.post("/sde/prijava", (req, res) => {
+  const k = baza.korisnici.find((x) => x.ime === req.body.ime);
+  const ok = k && k.lozinka === req.body.lozinka;
+  porukaPrijave = ok
+    ? `Prijava uspješna (${kodiraj(k.ime)}, zapis: ${k.nacin}).`
+    : "Neispravno ime ili lozinka.";
+  res.redirect("/");
+});
+
+app.post("/sde/obrisi", (req, res) => {
+  baza.korisnici = [];
+  porukaPrijave = "";
+  res.redirect("/");
+});
+
+spremiKorisnika("ana", "ana123", "4539148803436467");
+
 function sekcijaXss() {
   const poruke = baza.poruke
     .map((p) => `<li>${postavke.xssRanjivost ? p : kodiraj(p)}</li>`)
@@ -65,7 +93,39 @@ Poruka: <input name="poruka" size="60"> <button>Spremi poruku</button>
 }
 
 function sekcijaSde() {
-  return `<section><h2>Nesigurna pohrana osjetljivih podataka (Sensitive Data Exposure)</h2><p>(uskoro)</p></section>`;
+  const redovi = baza.korisnici
+    .map((k) => `<tr>
+<td>${k.nacin}</td>
+<td>${kodiraj(k.ime)}</td>
+<td>${kodiraj(k.lozinka)}</td>
+<td>${kodiraj(k.kartica)}</td>
+</tr>`)
+    .join("");
+  const prikaz = baza.korisnici
+    .map((k) => `<li>${kodiraj(k.ime)}: ${kodiraj(k.kartica)}</li>`)
+    .join("");
+  return `<section>
+<h2>Nesigurna pohrana osjetljivih podataka (Sensitive Data Exposure)</h2>
+<p class="upute"><b>Upute:</b> Registriraj korisnika. Lozinka i broj kartice spremaju se u bazu kao običan tekst.
+Tablica prikazuje sadržaj baze, odnosno ono što napadač vidi ako ukrade bazu. Testni korisnik: ana / ana123.</p>
+<form method="post" action="/sde/registracija">
+Ime: <input name="ime"> Lozinka: <input name="lozinka" type="password"> Kartica: <input name="kartica">
+<button>Registriraj</button>
+</form>
+<form method="post" action="/sde/obrisi"><button>Obriši korisnike</button></form>
+<h3>Sadržaj baze (ono što vidi napadač)</h3>
+<table>
+<tr><th>način</th><th>ime</th><th>lozinka</th><th>kartica</th></tr>
+${redovi}
+</table>
+<h3>Prikaz korisnicima</h3>
+<ul>${prikaz}</ul>
+<h3>Prijava</h3>
+<form method="post" action="/sde/prijava">
+Ime: <input name="ime"> Lozinka: <input name="lozinka" type="password"> <button>Prijava</button>
+</form>
+<p>${porukaPrijave}</p>
+</section>`;
 }
 
 app.get("/", (req, res) => {
