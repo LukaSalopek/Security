@@ -8,6 +8,7 @@ app.use(cookieParser());
 
 const baza = { poruke: [], korisnici: [], ukradeniKolacici: [] };
 const postavke = { xssRanjivost: true, sdeRanjivost: true };
+const KLJUC = process.env.KLJUC ? Buffer.from(process.env.KLJUC, "hex") : randomBytes(32);
 let porukaPrijave = "";
 
 function kodiraj(tekst) {
@@ -38,19 +39,42 @@ app.get("/napadac", (req, res) => {
 <form method="post" action="/xss/obrisi"><button>Obriši poruke i vrati se</button></form>`);
 });
 
-function spremiKorisnika(ime, lozinka, kartica) {
-  baza.korisnici.push({ nacin: "ranjivo", ime, lozinka, kartica });
+function spremiKorisnika(ime, lozinka, kartica, ranjivo) {
+  if (ranjivo) {
+    baza.korisnici.push({ nacin: "ranjivo", ime, lozinka, kartica });
+    return;
+  }
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(lozinka, salt, 64).toString("hex");
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", KLJUC, iv);
+  const sifrat = Buffer.concat([cipher.update(kartica, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  baza.korisnici.push({
+    nacin: "sigurno",
+    ime,
+    salt,
+    hash,
+    kartica: iv.toString("hex") + ":" + tag.toString("hex") + ":" + sifrat.toString("hex"),
+    zadnje4: kartica.slice(-4),
+  });
 }
 
 app.post("/sde/registracija", (req, res) => {
+  postavke.sdeRanjivost = req.body.ranjivost === "on";
   const { ime, lozinka, kartica } = req.body;
-  if (ime && lozinka && kartica) spremiKorisnika(ime, lozinka, kartica);
+  if (ime && lozinka && kartica) spremiKorisnika(ime, lozinka, kartica, postavke.sdeRanjivost);
   res.redirect("/");
 });
 
 app.post("/sde/prijava", (req, res) => {
   const k = baza.korisnici.find((x) => x.ime === req.body.ime);
-  const ok = k && k.lozinka === req.body.lozinka;
+  let ok = false;
+  if (k && k.nacin === "ranjivo") ok = k.lozinka === req.body.lozinka;
+  if (k && k.nacin === "sigurno") {
+    const hash = scryptSync(req.body.lozinka || "", k.salt, 64);
+    ok = timingSafeEqual(hash, Buffer.from(k.hash, "hex"));
+  }
   porukaPrijave = ok
     ? `Prijava uspješna (${kodiraj(k.ime)}, zapis: ${k.nacin}).`
     : "Neispravno ime ili lozinka.";
@@ -63,7 +87,8 @@ app.post("/sde/obrisi", (req, res) => {
   res.redirect("/");
 });
 
-spremiKorisnika("ana", "ana123", "4539148803436467");
+spremiKorisnika("ana", "ana123", "4539148803436467", true);
+spremiKorisnika("marko", "marko123", "5425233430109903", false);
 
 function sekcijaXss() {
   const poruke = baza.poruke
@@ -97,18 +122,20 @@ function sekcijaSde() {
     .map((k) => `<tr>
 <td>${k.nacin}</td>
 <td>${kodiraj(k.ime)}</td>
-<td>${kodiraj(k.lozinka)}</td>
+<td>${k.nacin === "ranjivo" ? kodiraj(k.lozinka) : "salt=" + k.salt + "<br>hash=" + k.hash}</td>
 <td>${kodiraj(k.kartica)}</td>
 </tr>`)
     .join("");
   const prikaz = baza.korisnici
-    .map((k) => `<li>${kodiraj(k.ime)}: ${kodiraj(k.kartica)}</li>`)
+    .map((k) => `<li>${kodiraj(k.ime)}: ${k.nacin === "ranjivo" ? kodiraj(k.kartica) : "**** **** **** " + k.zadnje4}</li>`)
     .join("");
   return `<section>
 <h2>Nesigurna pohrana osjetljivih podataka (Sensitive Data Exposure)</h2>
-<p class="upute"><b>Upute:</b> Registriraj korisnika. Lozinka i broj kartice spremaju se u bazu kao običan tekst.
-Tablica prikazuje sadržaj baze, odnosno ono što napadač vidi ako ukrade bazu. Testni korisnik: ana / ana123.</p>
+<p class="upute"><b>Upute:</b> Registriraj korisnika. Kad je ranjivost uključena, lozinka i broj kartice spremaju se u bazu kao običan tekst.
+Kad je isključena, lozinka se sprema kao scrypt hash s jedinstvenim saltom, kartica se šifrira (AES-256-GCM, ključ nije u bazi), a korisnicima se prikazuje maskirana.
+Tablica prikazuje sadržaj baze, odnosno ono što napadač vidi ako ukrade bazu. Testni korisnici: ana / ana123 (ranjivo), marko / marko123 (sigurno).</p>
 <form method="post" action="/sde/registracija">
+<label><input type="checkbox" name="ranjivost" ${postavke.sdeRanjivost ? "checked" : ""}> Ranjivost uključena</label><br><br>
 Ime: <input name="ime"> Lozinka: <input name="lozinka" type="password"> Kartica: <input name="kartica">
 <button>Registriraj</button>
 </form>
