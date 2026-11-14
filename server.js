@@ -99,12 +99,9 @@ function sekcijaXss() {
     .join("");
   return `<section>
 <h2>Cross-site scripting (XSS) – pohranjeni</h2>
-<p class="upute"><b>Upute:</b> Upiši poruku koja se pohranjuje na poslužitelju i prikazuje svim posjetiteljima. Isprobaj:<br>
+<p class="upute"><b>Upute:</b> Upiši poruku i spremi je. Isprobaj:<br>
 <code>&lt;script&gt;alert(document.cookie)&lt;/script&gt;</code><br>
-<code>&lt;img src=x onerror="alert(document.cookie)"&gt;</code><br>
-<code>&lt;img src=x onerror="new Image().src='/napadac?cookie='+document.cookie"&gt;</code> (krađa kolačića)<br>
-<code>&lt;script&gt;document.location.href='/napadac?cookie='+document.cookie&lt;/script&gt;</code> (preusmjeravanje)<br>
-Kad je ranjivost isključena, poruke se kodiraju, a kolačić sjednice dobiva zastavicu HttpOnly.</p>
+<code>&lt;img src=x onerror="new Image().src='/napadac?cookie='+document.cookie"&gt;</code></p>
 <form method="post" action="/xss/poruka">
 <label><input type="checkbox" name="ranjivost" ${postavke.xssRanjivost ? "checked" : ""}> Ranjivost uključena</label><br><br>
 Poruka: <input name="poruka" size="60"> <button>Spremi poruku</button>
@@ -131,9 +128,7 @@ function sekcijaSde() {
     .join("");
   return `<section>
 <h2>Nesigurna pohrana osjetljivih podataka (Sensitive Data Exposure)</h2>
-<p class="upute"><b>Upute:</b> Registriraj korisnika. Kad je ranjivost uključena, lozinka i broj kartice spremaju se u bazu kao običan tekst.
-Kad je isključena, lozinka se sprema kao scrypt hash s jedinstvenim saltom, kartica se šifrira (AES-256-GCM, ključ nije u bazi), a korisnicima se prikazuje maskirana.
-Tablica prikazuje sadržaj baze, odnosno ono što napadač vidi ako ukrade bazu. Testni korisnici: ana / ana123 (ranjivo), marko / marko123 (sigurno).</p>
+<p class="upute"><b>Upute:</b> Registriraj korisnika i pogledaj kako je spremljen u bazi. Testni korisnici: ana / ana123, marko / marko123.</p>
 <form method="post" action="/sde/registracija">
 <label><input type="checkbox" name="ranjivost" ${postavke.sdeRanjivost ? "checked" : ""}> Ranjivost uključena</label><br><br>
 Ime: <input name="ime"> Lozinka: <input name="lozinka" type="password"> Kartica: <input name="kartica">
